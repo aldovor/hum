@@ -10,76 +10,59 @@ w3 = Web3(Web3.HTTPProvider(os.getenv("RPC_URL")))
 wallet_address = Web3.to_checksum_address(os.getenv("WALLET_ADDRESS"))
 contract_address = Web3.to_checksum_address("0xa18f6FCB2Fd4884436d10610E69DB7BFa1bFe8C7")
 
-# ABI kontrak (Pastikan kamu sudah mendapatkan ABI lengkap kontrak)
-contract_abi = [
-    {
-        "inputs": [{"internalType": "address", "name": "user", "type": "address"}],
-        "name": "dailyRewardsAvailable",
-        "outputs": [{"internalType": "uint256", "name": "amount", "type": "uint256"}],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [{"internalType": "address", "name": "user", "type": "address"}],
-        "name": "genesisRewardsAvailable",
-        "outputs": [{"internalType": "uint256", "name": "amount", "type": "uint256"}],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [{"internalType": "bytes32", "name": "role", "type": "bytes32"}, {"internalType": "address", "name": "account", "type": "address"}],
-        "name": "hasRole",
-        "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "claimReward",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    }
-]
+# ABI kontrak dari yang kamu kirim
+contract_abi = [ ... ]  # Ganti dengan ABI lengkap yang kamu punya
 
 # Inisialisasi kontrak
 contract = w3.eth.contract(address=contract_address, abi=contract_abi)
 
-# Cek reward yang tersedia
-daily = contract.functions.dailyRewardsAvailable(wallet_address).call()
-genesis = contract.functions.genesisRewardsAvailable(wallet_address).call()
-
 # Role hash default (gunakan ini jika kontrak mengikuti pola AccessControl dari OpenZeppelin)
-CLAIMER_ROLE = w3.keccak(text="CLAIMER_ROLE")  # Ganti sesuai kebutuhan
+CLAIMER_ROLE = w3.keccak(text="CLAIMER_ROLE")
+
+# Cek jika wallet memiliki role CLAIMER_ROLE
 has_role = contract.functions.hasRole(CLAIMER_ROLE, wallet_address).call()
 
-print(f"🎁 Daily reward tersedia: {daily}")
-print(f"🌱 Genesis reward tersedia: {genesis}")
-print(f"🔐 Wallet punya CLAIMER_ROLE: {has_role}")
+# Fungsi klaim reward jika wallet memiliki role CLAIMER_ROLE
+def claim_rewards():
+    try:
+        # Periksa reward yang tersedia
+        daily = contract.functions.dailyRewardsAvailable(wallet_address).call()
+        genesis = contract.functions.genesisRewardsAvailable(wallet_address).call()
 
-# Mengecek jika wallet memiliki role dan reward yang tersedia, lalu klaim reward
+        print(f"🎁 Daily reward tersedia: {daily}")
+        print(f"🌱 Genesis reward tersedia: {genesis}")
+
+        # Klaim reward jika ada yang tersedia
+        if daily > 0:
+            # Panggil fungsi klaim reward untuk daily
+            tx = contract.functions.claimDailyRewards().buildTransaction({
+                'from': wallet_address,
+                'gas': 200000,  # Sesuaikan gas limit
+                'gasPrice': w3.toWei('10', 'gwei'),
+                'nonce': w3.eth.getTransactionCount(wallet_address),
+            })
+            signed_tx = w3.eth.account.sign_transaction(tx, private_key=os.getenv("PRIVATE_KEY"))
+            tx_hash = w3.eth.sendRawTransaction(signed_tx.rawTransaction)
+            print(f"💸 Klaim Daily reward berhasil! Tx hash: {tx_hash.hex()}")
+
+        if genesis > 0:
+            # Panggil fungsi klaim reward untuk genesis
+            tx = contract.functions.claimGenesisRewards().buildTransaction({
+                'from': wallet_address,
+                'gas': 200000,  # Sesuaikan gas limit
+                'gasPrice': w3.toWei('10', 'gwei'),
+                'nonce': w3.eth.getTransactionCount(wallet_address),
+            })
+            signed_tx = w3.eth.account.sign_transaction(tx, private_key=os.getenv("PRIVATE_KEY"))
+            tx_hash = w3.eth.sendRawTransaction(signed_tx.rawTransaction)
+            print(f"🌱 Klaim Genesis reward berhasil! Tx hash: {tx_hash.hex()}")
+
+    except Exception as e:
+        print(f"❌ Terjadi kesalahan saat klaim reward: {e}")
+
+# Mengecek role dan klaim jika ada role CLAIMER_ROLE
 if has_role:
-    if daily > 0 or genesis > 0:
-        # Build transaksi untuk klaim
-        nonce = w3.eth.get_transaction_count(wallet_address)
-        gas_price = w3.eth.gas_price
-
-        tx = contract.functions.claimReward().build_transaction({
-            'from': wallet_address,
-            'nonce': nonce,
-            'gas': 200000,
-            'gasPrice': gas_price,
-            'chainId': w3.eth.chain_id
-        })
-
-        # Tandatangani transaksi
-        private_key = os.getenv("PRIVATE_KEY")
-        signed_tx = w3.eth.account.sign_transaction(tx, private_key)
-
-        # Kirim transaksi
-        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-        print(f"✅ Transaksi terkirim! Hash: {tx_hash.hex()}")
-    else:
-        print("❌ Tidak ada reward yang tersedia untuk diklaim.")
+    print("🔐 Wallet memiliki CLAIMER_ROLE, dapat melakukan klaim reward!")
+    claim_rewards()
 else:
-    print("❌ Wallet tidak memiliki peran untuk melakukan klaim.")
+    print("❌ Wallet tidak memiliki CLAIMER_ROLE, tidak dapat melakukan klaim reward.")
