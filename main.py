@@ -2,26 +2,37 @@ from web3 import Web3
 from dotenv import load_dotenv
 import os
 
-# Load .env file
+# Load .env
 load_dotenv()
 
-# Get data from .env
-rpc_url = os.getenv("RPC_URL")
+# Inisialisasi koneksi
+w3 = Web3(Web3.HTTPProvider(os.getenv("RPC_URL")))
 wallet_address = Web3.to_checksum_address(os.getenv("WALLET_ADDRESS"))
-private_key = os.getenv("PRIVATE_KEY")
+contract_address = Web3.to_checksum_address("0xa18f6FCB2Fd4884436d10610E69DB7BFa1bFe8C7")
 
-# Connect to RPC
-w3 = Web3(Web3.HTTPProvider(rpc_url))
-
-# Check connection
-if not w3.is_connected():
-    raise ConnectionError("❌ Failed to connect to RPC from .env.")
-
-# Contract address
-contract_address = w3.to_checksum_address("0xa18f6FCB2Fd4884436d10610E69DB7BFa1bFe8C7")
-
-# Minimal ABI for claimReward
+# ABI kontrak (Pastikan kamu sudah mendapatkan ABI lengkap kontrak)
 contract_abi = [
+    {
+        "inputs": [{"internalType": "address", "name": "user", "type": "address"}],
+        "name": "dailyRewardsAvailable",
+        "outputs": [{"internalType": "uint256", "name": "amount", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [{"internalType": "address", "name": "user", "type": "address"}],
+        "name": "genesisRewardsAvailable",
+        "outputs": [{"internalType": "uint256", "name": "amount", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [{"internalType": "bytes32", "name": "role", "type": "bytes32"}, {"internalType": "address", "name": "account", "type": "address"}],
+        "name": "hasRole",
+        "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
     {
         "inputs": [],
         "name": "claimReward",
@@ -31,23 +42,44 @@ contract_abi = [
     }
 ]
 
-# Initialize contract
+# Inisialisasi kontrak
 contract = w3.eth.contract(address=contract_address, abi=contract_abi)
 
-# Build transaction
-nonce = w3.eth.get_transaction_count(wallet_address)
-gas_price = w3.eth.gas_price
+# Cek reward yang tersedia
+daily = contract.functions.dailyRewardsAvailable(wallet_address).call()
+genesis = contract.functions.genesisRewardsAvailable(wallet_address).call()
 
-tx = contract.functions.claimReward().build_transaction({
-    'from': wallet_address,
-    'nonce': nonce,
-    'gas': 200000,
-    'gasPrice': gas_price,
-    'chainId': w3.eth.chain_id
-})
+# Role hash default (gunakan ini jika kontrak mengikuti pola AccessControl dari OpenZeppelin)
+CLAIMER_ROLE = w3.keccak(text="CLAIMER_ROLE")  # Ganti sesuai kebutuhan
+has_role = contract.functions.hasRole(CLAIMER_ROLE, wallet_address).call()
 
-# Sign and send the transaction
-signed_tx = w3.eth.account.sign_transaction(tx, private_key=private_key)
-tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+print(f"🎁 Daily reward tersedia: {daily}")
+print(f"🌱 Genesis reward tersedia: {genesis}")
+print(f"🔐 Wallet punya CLAIMER_ROLE: {has_role}")
 
-print(f"✅ Transaction sent! Hash: {tx_hash.hex()}")
+# Mengecek jika wallet memiliki role dan reward yang tersedia, lalu klaim reward
+if has_role:
+    if daily > 0 or genesis > 0:
+        # Build transaksi untuk klaim
+        nonce = w3.eth.get_transaction_count(wallet_address)
+        gas_price = w3.eth.gas_price
+
+        tx = contract.functions.claimReward().build_transaction({
+            'from': wallet_address,
+            'nonce': nonce,
+            'gas': 200000,
+            'gasPrice': gas_price,
+            'chainId': w3.eth.chain_id
+        })
+
+        # Tandatangani transaksi
+        private_key = os.getenv("PRIVATE_KEY")
+        signed_tx = w3.eth.account.sign_transaction(tx, private_key)
+
+        # Kirim transaksi
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        print(f"✅ Transaksi terkirim! Hash: {tx_hash.hex()}")
+    else:
+        print("❌ Tidak ada reward yang tersedia untuk diklaim.")
+else:
+    print("❌ Wallet tidak memiliki peran untuk melakukan klaim.")
