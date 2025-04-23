@@ -11,7 +11,31 @@ wallet_address = Web3.to_checksum_address(os.getenv("WALLET_ADDRESS"))
 contract_address = Web3.to_checksum_address("0xa18f6FCB2Fd4884436d10610E69DB7BFa1bFe8C7")
 
 # ABI kontrak dari yang kamu kirim
-contract_abi = [ ... ]  # Ganti dengan ABI lengkap yang kamu punya
+contract_abi = [
+    {
+        "inputs": [
+            {"internalType": "address", "name": "account", "type": "address"}
+        ],
+        "name": "hasRole",
+        "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "CLAIMER_ROLE",
+        "outputs": [],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "claimReward",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+]  # Ganti dengan ABI lengkap yang kamu punya
 
 # Inisialisasi kontrak
 contract = w3.eth.contract(address=contract_address, abi=contract_abi)
